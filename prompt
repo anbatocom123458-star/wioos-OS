@@ -1,0 +1,951 @@
+Bạn là lead architect và senior systems engineer phụ trách xây dựng WIOOS.
+
+Đọc kỹ toàn bộ yêu cầu này trước khi thực hiện bất kỳ thay đổi nào.
+
+1. MỤC TIÊU
+
+Xây dựng WIOOS — một operating system/runtime nhẹ, tối ưu, có giao diện người dùng, hệ thống ứng dụng riêng, driver manager, app store riêng, security layer và khả năng tùy biến rất cao.
+
+WIOOS không phải một desktop Linux distro thông thường và không phải Android fork.
+
+Triết lý:
+
+* nhẹ
+* nhanh
+* modular
+* highly customizable
+* security-first
+* native application ecosystem
+* driver ecosystem riêng
+* có thể phát triển từ Railway prototype lên native x86_64/ARM64
+* ưu tiên trải nghiệm người dùng đơn giản nhưng kiến trúc bên dưới phải sạch và có khả năng mở rộng
+
+Không tuyên bố bảo mật 100%. Luôn thiết kế theo threat model thực tế và giả định rằng một số cơ chế có thể bị bypass nếu attacker có quyền hoặc khả năng kiểm soát đủ sâu.
+
+2. NGÔN NGỮ CHÍNH
+
+Ngôn ngữ hệ thống chính của WIOOS là:
+
+RUST
+
+Rust được ưu tiên cho:
+
+* core runtime
+* system services
+* process manager
+* package manager
+* driver manager
+* security components
+* networking
+* storage layer
+* WIO API
+* native system applications
+* tooling
+
+C/C++ có thể được hỗ trợ khi cần tương thích với driver/library/hardware ecosystem.
+
+Các ngôn ngữ khác có thể được hỗ trợ cho native application ecosystem trong tương lai, ví dụ:
+
+* Rust
+* C
+* C++
+* Go
+* Zig
+* các ngôn ngữ khác nếu có SDK/ABI phù hợp
+
+Không ép toàn bộ ecosystem chỉ sử dụng một ngôn ngữ nếu điều đó làm giảm khả năng mở rộng.
+
+3. QUY TẮC DÙNG SKILL
+
+Trước khi code:
+
+1. Tìm và đọc tất cả skill/reference liên quan đến task.
+2. Đọc skill nhiều lần nếu tài liệu dài hoặc có phần architecture/security/build/deployment quan trọng.
+3. Không chỉ đọc tên skill rồi bỏ qua nội dung.
+4. Sau lần đọc đầu tiên, đọc lại các phần liên quan trực tiếp đến implementation.
+5. Nếu có conflict giữa code hiện tại và skill, phân tích trước rồi mới thay đổi.
+6. Không tự ý bỏ qua skill chỉ vì implementation có vẻ đơn giản.
+
+Sau khi đọc skill, hãy tự kiểm tra:
+
+* architecture
+* security
+* dependency
+* deployment
+* filesystem
+* networking
+* build system
+* testing
+* maintainability
+
+4. QUY TẮC TRƯỚC KHI CODE
+
+Không được lập tức sinh hàng nghìn dòng code.
+
+Trước tiên:
+
+* inspect repository
+* xác định cấu trúc hiện tại
+* xác định runtime/build system hiện tại
+* xác định những phần đã tồn tại
+* tìm dead code
+* tìm placeholder
+* tìm code generated không cần thiết
+* xác định dependency
+* xác định target Railway
+* xác định khả năng mở rộng native sau này
+
+Sau đó tạo architecture plan.
+
+Chỉ khi architecture hợp lý mới bắt đầu implementation.
+
+Không phá code đang hoạt động nếu chưa có lý do.
+
+Không tạo abstraction vô nghĩa.
+
+Không tạo hàng loạt file chỉ để làm dự án trông lớn hơn.
+
+5. KIẾN TRÚC TỔNG QUAN
+
+WIOOS nên có kiến trúc modular:
+
+WIOOS
+├── Core / Runtime
+├── Process Manager
+├── Memory / Resource Manager
+├── Filesystem
+├── Network Stack
+├── Security Layer
+├── Driver Manager
+├── Package Manager
+├── WIO API
+├── Window/UI System
+├── App Manager
+├── WIO Store
+├── Settings
+├── Security Center
+└── Native Applications
+
+Thiết kế API giữa các thành phần rõ ràng.
+
+Không hard-code dependency giữa app và implementation cụ thể của core.
+
+6. RAILWAY PROTOTYPE
+
+WIOOS giai đoạn đầu phải có khả năng chạy trên Railway.
+
+Lưu ý:
+
+Railway không phải môi trường để boot một kernel OS riêng trực tiếp.
+
+Do đó bản Railway là:
+
+WIOOS Runtime / Userspace Prototype
+
+chạy bên trong Linux container.
+
+Kiến trúc:
+
+Railway
+→ Linux container
+→ WIOOS Runtime
+→ WIOOS services
+→ WIO UI
+→ WIO Apps
+
+Nhưng architecture phải được thiết kế sao cho sau này có thể có:
+
+WIOOS Native
+→ x86_64
+→ ARM64
+→ VM
+→ hardware thật
+
+Không viết architecture chỉ dành riêng cho Railway.
+
+7. RAILWAY PUBLIC ACCESS + VERIFICATION
+
+Khi deploy WIOOS lên Railway:
+
+Railway cung cấp public URL.
+
+Khi người dùng mở public URL lần đầu:
+
+KHÔNG vào thẳng WIOOS.
+
+Phải hiển thị một màn hình:
+
+“Waiting for verification”
+
+Không dùng emoji.
+
+Không dùng icon.
+
+Thiết kế tối giản, sạch.
+
+Sau khi request tới server, server phải ghi IP của client vào Railway logs theo format rõ ràng.
+
+Ví dụ:
+
+WIOOS VERIFICATION REQUEST
+IP: x.x.x.x
+TIME: …
+STATUS: PENDING
+
+Admin/operator vào Railway console và nhập:
+
+verify 
+
+Ví dụ:
+
+verify 1.2.3.4
+
+Nếu IP đang pending:
+
+* mark IP as verified
+* ghi log verification
+* cho phép IP truy cập WIOOS
+
+Nếu IP không tồn tại:
+
+* reject command
+* ghi log
+
+Phải chống các lỗi cơ bản:
+
+* malformed IP
+* command injection
+* duplicate verification
+* fake verification state
+* race condition
+* spoofed HTTP headers
+
+Không tin tưởng X-Forwarded-For một cách mù quáng.
+
+Thiết kế cơ chế xác định client IP phù hợp với môi trường proxy của Railway.
+
+Verification state không nên chỉ phụ thuộc vào RAM nếu cần persistence.
+
+8. GIAO DIỆN CHÍNH
+
+WIOOS vẫn có GUI.
+
+Màn hình chính mặc định phải sạch và tối giản.
+
+Có:
+
+* thời gian
+* trạng thái network
+* battery nếu hardware hỗ trợ
+* app launcher
+* app shortcuts
+* system status
+* navigation
+* search
+* customization
+
+Không bắt buộc desktop layout.
+
+Có thể dùng:
+
+* mobile layout
+* desktop layout
+* tablet layout
+* server/dashboard layout
+
+Layout phải responsive.
+
+9. CUSTOMIZATION
+
+Đây là một trong những tính năng quan trọng nhất của WIOOS.
+
+Không chỉ cung cấp vài theme.
+
+Người dùng có thể tùy biến:
+
+* wallpaper
+* theme
+* light/dark mode
+* font
+* icon style nếu cần
+* home layout
+* widgets
+* status bar
+* navigation
+* animation
+* app placement
+* lock screen
+* default applications
+* system behavior
+* services
+* startup behavior
+* permissions
+* network settings
+* profiles
+
+Phải có Home Screen Customization.
+
+Cho phép tạo profile:
+
+Mobile
+Developer
+Gaming
+Server
+Custom
+
+Profile có thể lưu layout/configuration riêng.
+
+10. WALLPAPER
+
+Settings → Personalization → Wallpaper
+
+Hỗ trợ:
+
+* static wallpaper
+* user-provided wallpaper
+* home wallpaper
+* lock screen wallpaper
+* crop
+* fit
+* fill
+* wallpaper per profile
+
+Không dùng SVG cho wallpaper/UI artwork.
+
+Nếu cần artwork minh họa, sử dụng ảnh raster hoặc asset hình ảnh phù hợp.
+
+11. DISPLAY
+
+Settings → Display
+
+Có:
+
+* Portrait
+* Landscape
+* Auto Rotate
+* brightness
+* resolution nếu hardware hỗ trợ
+* refresh rate nếu hardware hỗ trợ
+* scaling
+
+Orientation phải đi qua WIO display/input API, không chỉ thay đổi CSS/UI.
+
+12. LOCK SCREEN
+
+Có lock screen riêng.
+
+Có:
+
+* current time
+* date
+* wallpaper
+* notifications nếu được bật
+* PIN/password
+* auto-lock timeout
+
+Không lưu password plaintext.
+
+13. DATE & TIME
+
+Có Time Service trung tâm.
+
+Settings → Date & Time:
+
+* automatic time
+* automatic timezone
+* manual timezone
+* UTC
+* timezone database
+* 12/24 hour
+* date format
+
+Mọi system app sử dụng WIO Time Service thay vì tự quản lý timezone riêng.
+
+14. NETWORK CENTER
+
+Có System Network Center.
+
+Hiển thị Wi-Fi:
+
+* SSID
+* connection status
+* security
+* signal strength
+* link speed
+* frequency
+* channel
+* IPv4
+* IPv6
+* gateway
+* DNS
+* DHCP
+* upload
+* download
+* latency
+* driver
+* firmware
+* interface state
+
+Có:
+
+* Wi-Fi on/off
+* scan
+* connect
+* disconnect
+* forget network
+* DNS configuration
+* proxy
+* static IP
+* DHCP
+
+Không expose thông tin nhạy cảm vào logs hoặc UI chia sẻ công khai nếu không cần thiết.
+
+15. DRIVERS
+
+WIOOS có Driver Manager.
+
+Driver core cần hỗ trợ theo architecture/hardware:
+
+* Wi-Fi
+* Ethernet
+* storage
+* USB
+* display
+* keyboard
+* touchscreen
+* audio
+* Bluetooth
+* camera
+* GPU
+* input
+
+Wi-Fi phải thuộc nhóm driver cơ bản cho mobile/laptop.
+
+Driver phải modular.
+
+Không load driver không cần thiết nếu hardware không tồn tại.
+
+16. OFFICIAL DRIVER REPOSITORY
+
+Driver chính thức lấy từ GitHub organization/account chính chủ của WIOOS:
+
+github.com/wioos28/
+
+Tạo repository:
+
+wioos28/wio-drivers
+
+Cấu trúc dự kiến:
+
+wio-drivers/
+├── wifi/
+├── ethernet/
+├── storage/
+├── usb/
+├── display/
+├── audio/
+├── gpu/
+├── bluetooth/
+├── camera/
+└── input/
+
+Không tải và thực thi driver tùy tiện từ GitHub bất kỳ.
+
+Nguồn chính thức có thể tích hợp/adapt upstream driver hợp lệ nhưng phải:
+
+* giữ license
+* giữ copyright
+* ghi rõ upstream source
+* version
+* checksum
+* signature nếu có
+* hardware compatibility
+
+17. DRIVER MANAGER
+
+Có GUI và CLI.
+
+Ví dụ:
+
+wio driver list
+wio driver search wifi
+wio driver install 
+wio driver update
+wio driver remove 
+
+Flow:
+
+hardware detection
+→ driver manager
+→ official WIO driver repository
+→ download
+→ verify
+→ install
+→ load
+→ device ready
+
+18. WIO APP ECOSYSTEM
+
+WIOOS không sử dụng APK.
+
+Có native WIO application format riêng.
+
+Ví dụ:
+
+.wio
+
+App system chính thức nằm trong GitHub ecosystem của WIOOS.
+
+GitHub:
+
+github.com/wioos28/wio-apps
+
+Các app có thể bao gồm:
+
+* Browser
+* Files
+* Terminal
+* Settings
+* WIO Store
+* Network
+* System Monitor
+* Calculator
+* Media
+* Developer tools
+
+App nên được tối ưu riêng cho WIOOS.
+
+19. APP DEVELOPMENT LANGUAGES
+
+Giai đoạn đầu cho phép nhiều ngôn ngữ.
+
+Ưu tiên:
+
+1. Rust
+2. C
+3. C++
+4. Go
+5. Zig nếu SDK phù hợp
+
+Không bắt buộc mọi app phải viết bằng Rust.
+
+Tuy nhiên WIOOS native SDK/API phải có ABI/interface rõ ràng.
+
+Mục tiêu:
+
+Rust/C/C++/Go/…
+→ WIO SDK
+→ build
+→ .wio
+→ WIO Store
+→ WIOOS
+
+20. WIO STORE
+
+Tạo repository:
+
+wioos28/wio-store
+
+và ecosystem:
+
+wioos28/wio-apps
+
+WIO Store là kho ứng dụng chính thức.
+
+Có:
+
+* search
+* categories
+* app details
+* version
+* size
+* architecture
+* permissions
+* changelog
+* install
+* update
+* uninstall
+* rollback nếu hỗ trợ
+
+Không tải file không xác minh.
+
+App release phải có:
+
+* manifest
+* version
+* checksum
+* signature nếu có
+* developer/source metadata
+
+21. APP MANAGER
+
+Có App Manager riêng.
+
+Hiển thị:
+
+* installed apps
+* version
+* size
+* running status
+* CPU
+* RAM
+* permissions
+* storage
+* network access
+
+Cho phép:
+
+* open
+* stop
+* force stop
+* restart
+* clear data
+* clear cache nếu có
+* uninstall
+* update
+* rollback
+* permissions
+* logs
+
+System apps không được gỡ nhầm.
+
+22. EXTERNAL APP INSTALLATION
+
+Cho phép cài app ngoài WIO Store nhưng phải có security gate.
+
+Không cài ngay khi user mở file.
+
+Flow:
+
+external package
+→ manifest validation
+→ integrity check
+→ signature check
+→ source check
+→ permission analysis
+→ security scan
+→ sandbox installation
+→ user confirmation
+
+Phân loại:
+
+Trusted
+Unverified
+Dangerous
+
+App unsigned hoặc unverified phải cảnh báo.
+
+App yêu cầu quyền nguy hiểm như:
+
+* raw disk
+* system access
+* driver installation
+* kernel-level access
+
+phải bị chặn mặc định.
+
+Chỉ Developer Mode / Advanced Installation mới có thể override nếu architecture cho phép.
+
+Tất cả external installation phải ghi Security Log.
+
+Không tuyên bố scan có thể phát hiện 100% malware.
+
+23. SECURITY CENTER
+
+Tạo Security Center.
+
+Hiển thị:
+
+* system integrity
+* app sandbox
+* encrypted storage
+* driver verification
+* pending updates
+* external app events
+* permission events
+* security logs
+
+Nếu có Security Score thì chỉ dùng làm configuration indicator, không được mô tả như “hệ thống an toàn X%”.
+
+24. PRIVATE DATA
+
+App data phải được isolation:
+
+/data/
+├── system/
+├── users/
+└── apps/
+├── browser/
+├── terminal/
+└── …
+
+App A không được mặc định đọc data của App B.
+
+Có thể dùng encryption cho dữ liệu nhạy cảm.
+
+Security model phải ghi rõ:
+
+WIOOS does not guarantee absolute security.
+
+Mọi security claim phải có threat model và limitation.
+
+25. SETTINGS
+
+Settings phải là system application chính thức.
+
+Categories:
+
+* Account
+* Personalization
+* Display
+* Sound
+* Network
+* Security & Privacy
+* Apps
+* Storage
+* Power
+* Date & Time
+* Language
+* Input
+* Drivers
+* Developer
+* About WIOOS
+
+26. LINUX COMPATIBILITY — FUTURE
+
+Không triển khai Linux application compatibility ngay ở MVP.
+
+Thiết kế architecture để tương lai có:
+
+WIO Native Apps
++
+Linux Compatibility Runtime
+
+Linux app phải sandbox.
+
+WIO Store có thể phân biệt:
+
+WIO Native
+Linux Compatible
+
+Nhưng không biến WIOOS thành Linux distro.
+
+27. DESIGN RULES
+
+TUYỆT ĐỐI:
+
+* No emoji
+* No decorative emoji
+* No emoji trong UI
+* No icon glyph làm thành phần bắt buộc của UI
+* No SVG
+* No SVG icons
+* No SVG illustrations
+
+UI sử dụng typography, spacing, borders, shapes và raster/image assets.
+
+Nếu cần hình minh họa hoặc artwork:
+
+* sử dụng ảnh raster
+* hoặc tạo artwork bằng công cụ hình ảnh phù hợp
+* không tạo SVG thay thế
+
+Không dùng emoji thay cho icon hệ thống.
+
+28. UI/UX
+
+Thiết kế:
+
+* clean
+* minimal
+* modern
+* responsive
+* accessible
+* fast
+* low resource usage
+
+Không copy nguyên UI của Windows, macOS, Android, iOS.
+
+WIOOS cần có visual identity riêng.
+
+29. PERFORMANCE
+
+Mục tiêu:
+
+* boot/runtime startup nhanh
+* idle CPU thấp
+* memory usage thấp
+* app startup nhanh
+* background service tối thiểu
+* modular loading
+* driver lazy loading nếu phù hợp
+* không chạy service không cần thiết
+
+Không đặt con số benchmark giả trước khi đo.
+
+Mọi performance claim phải dựa trên benchmark thực tế.
+
+30. REPOSITORY ECOSYSTEM
+
+Tổ chức GitHub chính:
+
+github.com/wioos28/
+
+Repositories:
+
+wioos28/wioos
+wioos28/wio-drivers
+wioos28/wio-apps
+wioos28/wio-store
+wioos28/wio-packages
+wioos28/wio-docs
+
+Giữ responsibility rõ ràng giữa các repository.
+
+31. CLI
+
+WIOOS nên có CLI:
+
+wio system
+wio app list
+wio app install
+wio app remove
+wio app update
+wio driver list
+wio driver install
+wio driver update
+wio store search
+wio network
+wio security
+wio logs
+
+CLI phải dùng cùng API/backend với GUI.
+
+Không tạo hai hệ thống quản lý riêng biệt.
+
+32. IMPLEMENTATION ORDER
+
+Không code tất cả cùng lúc.
+
+Ưu tiên:
+
+PHASE 1
+
+* repository architecture
+* Rust workspace
+* WIO runtime
+* configuration
+* logging
+* HTTP/public Railway service
+* verification flow
+
+PHASE 2
+
+* WIO UI shell
+* home screen
+* Settings
+* Time Service
+* Network Center
+
+PHASE 3
+
+* app model
+* app manager
+* package format
+* WIO Store
+
+PHASE 4
+
+* Driver Manager
+* official driver repository integration
+* security verification
+
+PHASE 5
+
+* sandbox
+* permission system
+* external app installer
+* Security Center
+
+PHASE 6
+
+* native application SDK
+* more WIO apps
+
+PHASE 7
+
+* architecture preparation for x86_64/ARM64 native target
+
+PHASE 8
+
+* future Linux compatibility
+
+33. IMPORTANT
+
+Không được fake functionality mà không nói rõ.
+
+Nếu Railway prototype chỉ mô phỏng hardware functionality thì ghi rõ abstraction.
+
+Không giả vờ rằng Railway container đã có quyền điều khiển hardware thật.
+
+Không hard-code IP.
+
+Không hard-code secret.
+
+Không lưu password plaintext.
+
+Không commit token/API key/private key.
+
+Không tạo backdoor.
+
+Không tạo hidden admin access.
+
+Không bỏ qua verification chỉ để demo.
+
+34. KẾT QUẢ MONG MUỐN
+
+Sau MVP, khi deploy lên Railway:
+
+Public URL
+→ Verification screen
+→ IP xuất hiện trong Railway logs
+→ operator nhập:
+
+verify 
+
+→ IP được xác minh
+→ WIOOS main interface xuất hiện
+
+Main interface có:
+
+* app launcher
+* time
+* network status
+* settings
+* customization
+* app manager
+* WIO Store
+
+và architecture phía dưới đã sẵn sàng để phát triển thành native WIOOS.
+
+35. CUỐI CÙNG
+
+Trước mỗi phase:
+
+1. kiểm tra architecture
+2. kiểm tra security
+3. kiểm tra dependency
+4. kiểm tra performance
+5. kiểm tra compatibility
+6. chạy test
+7. kiểm tra lint/format
+8. kiểm tra build
+9. kiểm tra Railway deployment
+
+Không tự ý chuyển sang phase tiếp theo nếu phase hiện tại chưa có nền tảng ổn định.
+
+Ưu tiên chất lượng kiến trúc hơn số lượng tính năng.
+
+Nếu phát hiện requirement mâu thuẫn, dừng lại, giải thích conflict và chọn phương án có lợi nhất cho kiến trúc WIOOS thay vì âm thầm làm sai.
+
+Bắt đầu bằng việc đọc repository hiện tại và các skill liên quan. Không code ngay.
