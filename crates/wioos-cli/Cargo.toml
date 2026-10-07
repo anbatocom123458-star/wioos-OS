@@ -1,0 +1,17 @@
+[package]
+name = "wioos-cli"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "wio"
+path = "src/main.rs"
+
+[dependencies]
+serde_json = "1"
+wioos-apps = { path = "../wioos-apps" }
+wioos-core = { path = "../wioos-core" }
+
+[dev-dependencies]
+tempfile = "3"

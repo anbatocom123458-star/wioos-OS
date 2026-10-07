@@ -1,0 +1,12 @@
+[workspace]
+members = [
+    "crates/wioos-core",
+    "crates/wioos-apps",
+    "crates/wioos-runtime",
+    "crates/wioos-cli",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
